@@ -25,7 +25,7 @@ pipeline {
         stage('Test Container') {
             steps {
                 sh '''
-                docker run -d --name test-container -p 5000:5000 $IMAGE_NAME:$IMAGE_TAG
+                docker run -d --name test-container -p 5002:5000 $IMAGE_NAME:$IMAGE_TAG
 
                 sleep 10
 
