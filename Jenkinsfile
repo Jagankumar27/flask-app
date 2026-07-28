@@ -4,6 +4,8 @@ pipeline {
     environment {
         IMAGE_NAME = "indhu1603/flask-hospital-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
+        TEST_CONTAINER = "test-container"
+        APP_CONTAINER = "flask-app"
     }
 
     stages {
@@ -25,14 +27,26 @@ pipeline {
         stage('Test Container') {
             steps {
                 sh '''
-                docker run -d --name test-container -p 5002:5000 $IMAGE_NAME:$IMAGE_TAG
+                # Remove old test container if it exists
+                docker stop $TEST_CONTAINER || true
+                docker rm $TEST_CONTAINER || true
+
+                # Run new test container
+                docker run -d \
+                  --name $TEST_CONTAINER \
+                  -p 5002:5000 \
+                  $IMAGE_NAME:$IMAGE_TAG
 
                 sleep 10
 
+                # Check container is running
                 docker ps
 
-                docker stop test-container
-                docker rm test-container
+                docker ps | grep $TEST_CONTAINER
+
+                # Cleanup
+                docker stop $TEST_CONTAINER
+                docker rm $TEST_CONTAINER
                 '''
             }
         }
@@ -68,29 +82,48 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 sh '''
-                docker stop flask-app || true
-                docker rm flask-app || true
+                # Stop old application
+                docker stop $APP_CONTAINER || true
+                docker rm $APP_CONTAINER || true
 
+                # Remove old image (optional)
+                docker image prune -f || true
+
+                # Run latest application
                 docker run -d \
-                --name flask-app \
-                -p 5000:5000 \
-                $IMAGE_NAME:$IMAGE_TAG
+                  --name $APP_CONTAINER \
+                  -p 5000:5000 \
+                  --restart unless-stopped \
+                  $IMAGE_NAME:$IMAGE_TAG
+
+                sleep 5
+
+                docker ps
                 '''
             }
         }
     }
 
     post {
+
         success {
-            echo 'CI/CD Pipeline Completed Successfully'
+            echo "CI/CD Pipeline Completed Successfully"
         }
 
         failure {
-            echo 'Pipeline Failed'
+            echo "Pipeline Failed"
+
+            sh '''
+            docker logs $TEST_CONTAINER || true
+            docker logs $APP_CONTAINER || true
+            '''
         }
 
         always {
-            sh 'docker image prune -f || true'
+            sh '''
+            docker image prune -f || true
+            docker container prune -f || true
+            '''
         }
     }
 }
